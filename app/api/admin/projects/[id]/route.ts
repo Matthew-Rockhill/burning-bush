@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireRole } from '@/lib/middleware/auth'
+import { verifyToken } from '@/lib/auth'
 
-export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRequest) => {
+export async function GET(request: NextRequest) {
+  // Manual auth check
+  const token = request.cookies.get('auth-token')?.value
+  if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const user = await verifyToken(token);
+  if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
   try {
     const url = new URL(request.url)
     const id = url.pathname.split('/')[4] // Extract id from path
@@ -33,9 +40,16 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextReq
       { status: 500 }
     )
   }
-})
+}
 
-export const PATCH = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRequest) => {
+export async function PATCH(request: NextRequest) {
+  // Manual auth check
+  const token = request.cookies.get('auth-token')?.value
+  if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const user = await verifyToken(token);
+  if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
   try {
     const url = new URL(request.url)
     const id = url.pathname.split('/')[4] // Extract id from path
@@ -64,9 +78,16 @@ export const PATCH = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextR
       { status: 500 }
     )
   }
-})
+}
 
-export const DELETE = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRequest) => {
+export async function DELETE(request: NextRequest) {
+  // Manual auth check
+  const token = request.cookies.get('auth-token')?.value
+  if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const user = await verifyToken(token);
+  if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
   try {
     const url = new URL(request.url)
     const id = url.pathname.split('/')[4] // Extract id from path
@@ -83,4 +104,4 @@ export const DELETE = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: Next
       { status: 500 }
     )
   }
-}) 
+} 

@@ -1,40 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/middleware/auth'
 import { db } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
 
-// GET /api/admin/orders
-export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function GET(request: NextRequest) {
   try {
+    // Manual auth check
+    const token = request.cookies.get('auth-token')?.value
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
     const status = searchParams.get('status')
-    const priority = searchParams.get('priority')
     const search = searchParams.get('search')
 
     const skip = (page - 1) * limit
 
-    const where: any = {}
-    
-    if (status) {
-      where.status = status
-    }
-    
-    if (priority) {
-      where.priority = priority
-    }
-    
-    if (search) {
-      where.OR = [
-        { orderNumber: { contains: search, mode: 'insensitive' } },
-        { customer: { 
-          OR: [
-            { firstName: { contains: search, mode: 'insensitive' } },
-            { lastName: { contains: search, mode: 'insensitive' } },
-            { email: { contains: search, mode: 'insensitive' } }
-          ]
-        } }
-      ]
+    const where = {
+      ...(status && { status: status as 'PENDING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' }),
+      ...(search && {
+        OR: [
+          { id: { contains: search, mode: 'insensitive' as const } },
+          { customer: { firstName: { contains: search, mode: 'insensitive' as const } } },
+          { customer: { lastName: { contains: search, mode: 'insensitive' as const } } },
+          { customer: { email: { contains: search, mode: 'insensitive' as const } } }
+        ]
+      })
     }
 
     const [orders, total] = await Promise.all([
@@ -46,22 +59,19 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
           customer: true,
           items: {
             include: {
-              product: true
+              product: {
+                include: {
+                  images: true
+                }
+              }
             }
-          },
-          projects: true,
-          statusHistory: {
-            orderBy: {
-              createdAt: 'desc'
-            },
-            take: 1
           }
         },
         orderBy: {
-          createdAt: 'desc',
-        },
+          createdAt: 'desc'
+        }
       }),
-      db.order.count({ where }),
+      db.order.count({ where })
     ])
 
     return NextResponse.json({
@@ -70,9 +80,10 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
-      },
+        totalPages: Math.ceil(total / limit)
+      }
     })
+
   } catch (error) {
     console.error('Error fetching orders:', error)
     return NextResponse.json(
@@ -80,4 +91,4 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
       { status: 500 }
     )
   }
-}) 
+} 

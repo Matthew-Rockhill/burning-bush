@@ -1,9 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireRole } from '@/lib/middleware/auth'
+import { verifyToken } from '@/lib/auth'
 
-export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRequest) => {
+export async function POST(request: NextRequest) {
   try {
+    // Manual auth check
+    const token = request.cookies.get('auth-token')?.value
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
     const url = new URL(request.url)
     const id = url.pathname.split('/')[4] // Extract id from path
     const body = await request.json()
@@ -52,7 +78,7 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRe
           customerId: inquiry.customerId || '',
           budget: budget || null,
           dueDate: dueDate ? new Date(dueDate) : null,
-          createdById: 'admin-user-id', // You'll need to get this from the auth context
+          createdById: user.id,
           createdAt: new Date(),
           updatedAt: new Date()
         },
@@ -86,4 +112,4 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRe
       { status: 500 }
     )
   }
-}) 
+} 

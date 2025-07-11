@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
           const customerName = `${order.customer.firstName} ${order.customer.lastName}`
           const itemCount = order.items.length
           
-          csvData += `${order.id},"${customerName}","${order.customer.email}","${order.status}","$${order.totalAmount}","${itemCount}","${order.createdAt.toISOString().split('T')[0]}"\n`
+          csvData += `${order.id},"${customerName}","${order.customer.email}","${order.status}","$${order.total}","${itemCount}","${order.createdAt.toISOString().split('T')[0]}"\n`
         })
         break
 

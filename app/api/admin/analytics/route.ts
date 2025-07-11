@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           ...dateFilter,
           status: { in: ['DELIVERED', 'SHIPPED'] }
         },
-        _sum: { totalAmount: true }
+        _sum: { total: true }
       }),
       
       // Total customers
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       summary: {
         totalOrders,
-        totalRevenue: totalRevenue._sum.totalAmount || 0,
+        totalRevenue: totalRevenue._sum.total || 0,
         totalCustomers,
         totalProducts,
         totalProjects,

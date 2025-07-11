@@ -1,35 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/middleware/auth'
 import { db } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
 
-// GET /api/admin/customers
-export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function GET(request: NextRequest) {
   try {
+    // Manual auth check
+    const token = request.cookies.get('auth-token')?.value
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
     const search = searchParams.get('search')
-    const status = searchParams.get('status')
+    const sortBy = searchParams.get('sortBy') || 'createdAt'
+    const sortOrder = searchParams.get('sortOrder') || 'desc'
 
     const skip = (page - 1) * limit
 
-    const where: any = {}
-    
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { company: { contains: search, mode: 'insensitive' } }
+    const where = search ? {
+      OR: [
+        { firstName: { contains: search, mode: 'insensitive' as const } },
+        { lastName: { contains: search, mode: 'insensitive' as const } },
+        { email: { contains: search, mode: 'insensitive' as const } },
+        { company: { contains: search, mode: 'insensitive' as const } }
       ]
-    }
-    
-    if (status) {
-      if (status === 'active') {
-        where.isActive = true
-      } else if (status === 'inactive') {
-        where.isActive = false
-      }
+    } : {}
+
+    const orderBy = {
+      [sortBy]: sortOrder
     }
 
     const [customers, total] = await Promise.all([
@@ -41,29 +61,13 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
           _count: {
             select: {
               orders: true,
-              inquiries: true,
-              projects: true
-            }
-          },
-          orders: {
-            take: 5,
-            orderBy: {
-              createdAt: 'desc'
-            },
-            include: {
-              items: {
-                include: {
-                  product: true
-                }
-              }
+              inquiries: true
             }
           }
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy
       }),
-      db.customer.count({ where }),
+      db.customer.count({ where })
     ])
 
     return NextResponse.json({
@@ -72,9 +76,10 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
-      },
+        totalPages: Math.ceil(total / limit)
+      }
     })
+
   } catch (error) {
     console.error('Error fetching customers:', error)
     console.error('Error details:', {
@@ -87,4 +92,4 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
       { status: 500 }
     )
   }
-}) 
+} 

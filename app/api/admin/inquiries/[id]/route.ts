@@ -1,81 +1,109 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/middleware/auth'
 import { db } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
 
-export const PATCH = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function PATCH(request: NextRequest) {
   try {
-    const inquiryId = request.nextUrl.pathname.split('/').pop()
-    const body = await request.json()
-    const { status, priority, assignedTo, responseNotes } = body
+    // Manual auth check
+    const token = request.cookies.get('auth-token')?.value
 
-    // Validate status
-    const validStatuses = ['NEW', 'CONTACTED', 'QUOTED', 'CONVERTED', 'CLOSED']
-    if (status && !validStatuses.includes(status)) {
+    if (!token) {
       return NextResponse.json(
-        { error: 'Invalid status' },
-        { status: 400 }
+        { error: 'Authentication required' },
+        { status: 401 }
       )
     }
 
-    // Validate priority
-    const validPriorities = ['LOW', 'NORMAL', 'HIGH', 'URGENT']
-    if (priority && !validPriorities.includes(priority)) {
+    const user = await verifyToken(token)
+
+    if (!user) {
       return NextResponse.json(
-        { error: 'Invalid priority' },
-        { status: 400 }
+        { error: 'Invalid token' },
+        { status: 401 }
       )
     }
 
-    // Prepare update data
-    const updateData: any = {
-      updatedAt: new Date()
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
     }
 
-    if (status) {
-      updateData.status = status
-    }
+    const url = new URL(request.url)
+    const id = url.pathname.split('/')[4] // Extract id from path
+    const data = await request.json()
 
-    if (priority) {
-      updateData.priority = priority
-    }
-
-    if (assignedTo) {
-      updateData.assignedTo = assignedTo
-    }
-
-    if (responseNotes) {
-      updateData.notes = responseNotes
-    }
-
-    // Update the inquiry
-    const updatedInquiry = await db.contactInquiry.update({
-      where: { id: inquiryId },
-      data: updateData,
+    const inquiry = await db.contactInquiry.update({
+      where: { id },
+      data: {
+        ...data,
+        updatedAt: new Date()
+      },
       include: {
-        customer: true
+        customer: true,
+        assignedAdmin: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
       }
     })
 
-    return NextResponse.json(updatedInquiry)
-
+    return NextResponse.json(inquiry)
   } catch (error) {
     console.error('Error updating inquiry:', error)
     return NextResponse.json(
-      { error: 'Failed to update inquiry' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
-});
+}
 
-export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function GET(request: NextRequest) {
   try {
-    const inquiryId = request.nextUrl.pathname.split('/').pop()
+    // Manual auth check
+    const token = request.cookies.get('auth-token')?.value
 
-    // Get inquiry with customer data
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
+    const url = new URL(request.url)
+    const id = url.pathname.split('/')[4] // Extract id from path
+
     const inquiry = await db.contactInquiry.findUnique({
-      where: { id: inquiryId },
+      where: { id },
       include: {
-        customer: true
+        customer: true,
+        assignedAdmin: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
       }
     })
 
@@ -87,12 +115,11 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
     }
 
     return NextResponse.json(inquiry)
-
   } catch (error) {
     console.error('Error fetching inquiry:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch inquiry' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
-});
+}

@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/middleware/auth'
 import { db } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
 
-export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function GET(request: NextRequest) {
+  // Manual auth check
+  const token = request.cookies.get('auth-token')?.value
+  if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const user = await verifyToken(token);
+  if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
   try {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -71,9 +78,16 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
       { status: 500 }
     )
   }
-});
+}
 
-export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function POST(request: NextRequest) {
+  // Manual auth check
+  const token = request.cookies.get('auth-token')?.value
+  if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const user = await verifyToken(token);
+  if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+
   try {
     const body = await request.json()
     const {
@@ -146,4 +160,4 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
       { status: 500 }
     )
   }
-}); 
+} 
