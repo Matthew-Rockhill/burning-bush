@@ -62,8 +62,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' })
-      router.push('/')
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        router.push('/')
+      }
     } catch (error) {
       console.error('Logout error:', error)
     }

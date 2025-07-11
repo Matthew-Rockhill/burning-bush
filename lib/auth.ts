@@ -1,7 +1,10 @@
-import bcrypt from 'bcryptjs'
-import * as jose from 'jose'
+import { SignJWT, jwtVerify } from 'jose'
+import { cookies } from 'next/headers'
+import { NextRequest } from 'next/server'
 import { db } from './db'
-import { AdminUser } from './generated/prisma'
+import CryptoJS from 'crypto-js'
+
+const secretKey = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-key')
 
 export interface AuthUser {
   id: string
@@ -11,37 +14,34 @@ export interface AuthUser {
   role: string
 }
 
+// Hash password using crypto-js (Edge Runtime compatible)
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
+  return CryptoJS.SHA256(password).toString()
 }
 
+// Verify password using crypto-js (Edge Runtime compatible)
 export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
+  const hashedInput = CryptoJS.SHA256(password).toString()
+  return hashedInput === hashedPassword
 }
 
-export async function generateToken(user: AuthUser): Promise<string> {
-  const secret = process.env.JWT_SECRET || 'fallback-secret'
-  
-  const secretKey = new TextEncoder().encode(secret)
-  const token = await new jose.SignJWT({ 
-    id: user.id, 
-    email: user.email, 
-    username: user.username, 
-    role: user.role 
+export async function createToken(user: AuthUser): Promise<string> {
+  return await new SignJWT({
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    name: user.name,
+    role: user.role
   })
     .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
     .setExpirationTime('24h')
     .sign(secretKey)
-  
-  return token
 }
 
 export async function verifyToken(token: string): Promise<AuthUser | null> {
   try {
-    const secret = process.env.JWT_SECRET || 'fallback-secret'
-    
-    const secretKey = new TextEncoder().encode(secret)
-    const { payload } = await jose.jwtVerify(token, secretKey)
+    const { payload } = await jwtVerify(token, secretKey)
     
     const user: AuthUser = {
       id: payload.id as string,
@@ -57,104 +57,42 @@ export async function verifyToken(token: string): Promise<AuthUser | null> {
   }
 }
 
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const cookieStore = await cookies()
+  const token = cookieStore.get('auth-token')?.value
+  
+  if (!token) {
+    return null
+  }
+  
+  return await verifyToken(token)
+}
+
 export async function authenticateUser(email: string, password: string): Promise<AuthUser | null> {
   try {
     const user = await db.adminUser.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        name: true,
-        role: true,
-        password: true,
-        isActive: true,
-      }
+      where: { email }
     })
-
-    if (!user || !user.isActive) {
+    
+    if (!user) {
       return null
     }
-
+    
     const isValidPassword = await verifyPassword(password, user.password)
+    
     if (!isValidPassword) {
       return null
     }
-
+    
     return {
       id: user.id,
       email: user.email,
       username: user.username,
       name: user.name,
-      role: user.role,
+      role: user.role
     }
   } catch (error) {
     console.error('Authentication error:', error)
-    return null
-  }
-}
-
-export async function createAdminUser(userData: {
-  email: string
-  username: string
-  password: string
-  name: string
-  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF'
-}): Promise<AdminUser> {
-  const hashedPassword = await hashPassword(userData.password)
-  
-  return db.adminUser.create({
-    data: {
-      email: userData.email,
-      username: userData.username,
-      password: hashedPassword,
-      name: userData.name,
-      role: userData.role || 'ADMIN',
-    }
-  })
-}
-
-export async function verifyAdmin(request: Request): Promise<AuthUser | null> {
-  try {
-    const authHeader = request.headers.get('authorization')
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return null
-    }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = await verifyToken(token)
-
-    if (!decoded) {
-      return null
-    }
-
-    // Verify the user still exists and is active
-    const user = await db.adminUser.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        name: true,
-        role: true,
-        isActive: true,
-      }
-    })
-
-    if (!user || !user.isActive) {
-      return null
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      name: user.name,
-      role: user.role,
-    }
-  } catch (error) {
-    console.error('Admin verification error:', error)
     return null
   }
 } 

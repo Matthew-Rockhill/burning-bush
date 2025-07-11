@@ -1,21 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/middleware/auth'
 import { db } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
 
-// GET /api/admin/categories
-export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function GET(request: NextRequest) {
   try {
+    // Check authentication
+    const token = request.cookies.get('auth-token')?.value
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
     const categories = await db.category.findMany({
       include: {
         _count: {
           select: {
-            products: true,
-          },
-        },
+            products: true
+          }
+        }
       },
       orderBy: {
-        sortOrder: 'asc',
-      },
+        name: 'asc'
+      }
     })
 
     return NextResponse.json(categories)
@@ -26,28 +51,51 @@ export const GET = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
       { status: 500 }
     )
   }
-})
+}
 
-// POST /api/admin/categories
-export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
+export async function POST(request: NextRequest) {
   try {
-    const data = await request.json()
+    // Check authentication
+    const token = request.cookies.get('auth-token')?.value
 
-    const { name, description, icon } = data
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
 
-    // Generate slug from name
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
+    const { name, description } = await request.json()
+
+    if (!name) {
+      return NextResponse.json(
+        { error: 'Category name is required' },
+        { status: 400 }
+      )
+    }
 
     const category = await db.category.create({
       data: {
         name,
-        slug,
         description,
-        icon,
-      },
+        slug: name.toLowerCase().replace(/\s+/g, '-')
+      }
     })
 
     return NextResponse.json(category, { status: 201 })
@@ -58,4 +106,4 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request) => {
       { status: 500 }
     )
   }
-}) 
+} 

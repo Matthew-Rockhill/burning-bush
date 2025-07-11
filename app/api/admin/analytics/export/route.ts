@@ -1,22 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireRole } from '@/lib/middleware/auth'
+import { verifyToken } from '@/lib/auth'
 
-export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRequest) => {
+export async function POST(request: NextRequest) {
   try {
+    // Check authentication
+    const token = request.cookies.get('auth-token')?.value
 
-    const body = await request.json()
-    const { 
-      reportType, 
-      startDate, 
-      endDate, 
-      format = 'csv' 
-    } = body
-
-    // Validate required fields
-    if (!reportType || !startDate || !endDate) {
+    if (!token) {
       return NextResponse.json(
-        { error: 'Report type, start date, and end date are required' },
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const user = await verifyToken(token)
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid token' },
+        { status: 401 }
+      )
+    }
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      )
+    }
+
+    const { searchParams } = new URL(request.url)
+    const type = searchParams.get('type') || 'all'
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    if (!startDate || !endDate) {
+      return NextResponse.json(
+        { error: 'Start date and end date are required' },
         { status: 400 }
       )
     }
@@ -31,10 +52,10 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRe
     let csvData = ''
     let filename = ''
 
-    switch (reportType) {
-      case 'revenue':
+    switch (type) {
+      case 'orders':
         const orders = await db.order.findMany({
-          where: { ...dateFilter, status: { in: ['DELIVERED', 'SHIPPED'] } },
+          where: dateFilter,
           include: {
             customer: true,
             items: {
@@ -48,74 +69,30 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRe
           }
         })
 
-        filename = `revenue_report_${startDate}_to_${endDate}.csv`
-        csvData = 'Order ID,Customer Name,Customer Email,Date,Items,Total,Payment Status\n'
+        filename = `order_report_${startDate}_to_${endDate}.csv`
+        csvData = 'Order ID,Customer Name,Customer Email,Status,Total Amount,Item Count,Created Date\n'
         
         orders.forEach(order => {
           const customerName = `${order.customer.firstName} ${order.customer.lastName}`
-          const itemsDescription = order.items.map(item => 
-            `${item.product.name} (${item.quantity}x)`
-          ).join('; ')
+          const itemCount = order.items.length
           
-          csvData += `${order.id},"${customerName}","${order.customer.email}","${order.createdAt.toISOString().split('T')[0]}","${itemsDescription}","$${order.total}","${order.paymentStatus}"\n`
+          csvData += `${order.id},"${customerName}","${order.customer.email}","${order.status}","$${order.totalAmount}","${itemCount}","${order.createdAt.toISOString().split('T')[0]}"\n`
         })
         break
 
       case 'customers':
         const customers = await db.customer.findMany({
           where: dateFilter,
-          include: {
-            orders: true,
-            inquiries: true
-          },
           orderBy: {
             createdAt: 'desc'
           }
         })
 
         filename = `customer_report_${startDate}_to_${endDate}.csv`
-        csvData = 'Customer ID,First Name,Last Name,Email,Phone,Company,Registration Date,Total Orders,Total Inquiries\n'
+        csvData = 'Customer ID,First Name,Last Name,Email,Phone,Company,Created Date\n'
         
         customers.forEach(customer => {
-          csvData += `${customer.id},"${customer.firstName}","${customer.lastName}","${customer.email}","${customer.phone || ''}","${customer.company || ''}","${customer.createdAt.toISOString().split('T')[0]}","${customer.orders.length}","${customer.inquiries.length}"\n`
-        })
-        break
-
-      case 'products':
-        const productSales = await db.$queryRaw<Array<{
-          id: string
-          name: string
-          price: number
-          category_name: string | null
-          total_sold: number
-          total_revenue: number
-          order_count: number
-        }>>`
-          SELECT 
-            p.id,
-            p.name,
-            p.price,
-            p.category_id,
-            c.name as category_name,
-            COALESCE(SUM(oi.quantity), 0) as total_sold,
-            COALESCE(SUM(oi.quantity * oi.price), 0) as total_revenue,
-            COUNT(DISTINCT o.id) as order_count
-          FROM products p
-          LEFT JOIN categories c ON p.category_id = c.id
-          LEFT JOIN order_items oi ON p.id = oi.product_id
-          LEFT JOIN orders o ON oi.order_id = o.id
-          WHERE o.created_at >= ${dateFilter.createdAt.gte}
-          AND o.created_at <= ${dateFilter.createdAt.lte}
-          AND o.status IN ('DELIVERED', 'SHIPPED')
-          GROUP BY p.id, p.name, p.price, p.category_id, c.name
-          ORDER BY total_sold DESC
-        `
-
-        filename = `product_sales_report_${startDate}_to_${endDate}.csv`
-        csvData = 'Product ID,Product Name,Category,Price,Units Sold,Total Revenue,Order Count\n'
-        
-        productSales.forEach((product) => {
-          csvData += `${product.id},"${product.name}","${product.category_name || 'Uncategorized'}","$${product.price}","${product.total_sold}","$${product.total_revenue}","${product.order_count}"\n`
+          csvData += `${customer.id},"${customer.firstName}","${customer.lastName}","${customer.email}","${customer.phone || 'N/A'}","${customer.company || 'N/A'}","${customer.createdAt.toISOString().split('T')[0]}"\n`
         })
         break
 
@@ -165,26 +142,22 @@ export const POST = requireRole(['ADMIN', 'SUPER_ADMIN'], async (request: NextRe
 
       default:
         return NextResponse.json(
-          { error: 'Invalid report type' },
+          { error: 'Invalid export type' },
           { status: 400 }
         )
     }
 
-    // Return CSV data
-    return new NextResponse(csvData, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Cache-Control': 'no-cache'
-      }
-    })
+    const response = new NextResponse(csvData)
+    response.headers.set('Content-Type', 'text/csv')
+    response.headers.set('Content-Disposition', `attachment; filename="${filename}"`)
+    
+    return response
 
   } catch (error) {
-    console.error('Error generating analytics report:', error)
+    console.error('Error exporting data:', error)
     return NextResponse.json(
-      { error: 'Failed to generate report' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
-}) 
+} 

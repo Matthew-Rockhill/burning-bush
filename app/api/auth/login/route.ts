@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateUser, generateToken } from '@/lib/auth'
+import { authenticateUser, createToken } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,34 +13,33 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await authenticateUser(email, password)
-    
+
     if (!user) {
-      console.log('Authentication failed for email:', email)
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
 
-    const token = await generateToken(user)
-    
-    // Set HTTP-only cookie
+    const token = await createToken(user)
+
     const response = NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
         name: user.name,
-        role: user.role,
-      },
-      token,
+        role: user.role
+      }
     })
-    
-    response.cookies.set('admin-token', token, {
+
+    // Set HTTP-only cookie
+    response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 86400, // 24 hours
+      maxAge: 24 * 60 * 60 // 24 hours
     })
 
     return response

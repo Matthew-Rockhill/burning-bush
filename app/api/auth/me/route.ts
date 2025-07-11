@@ -1,29 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken } from '@/lib/auth'
+import { NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/auth'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const token = request.cookies.get('admin-token')?.value
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'No authentication token' },
-        { status: 401 }
-      )
-    }
-
-    const user = await verifyToken(token)
+    const user = await getCurrentUser()
     
     if (!user) {
       return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: 'Not authenticated' },
         { status: 401 }
       )
     }
 
-    return NextResponse.json({ user })
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        role: user.role
+      }
+    })
   } catch (error) {
-    console.error('Token verification error:', error)
+    console.error('Error fetching current user:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
