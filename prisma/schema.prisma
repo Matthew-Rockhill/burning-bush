@@ -1,0 +1,507 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Admin Users
+model AdminUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  name      String
+  role      AdminRole @default(ADMIN)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  createdProducts      Product[]
+  updatedOrders        Order[]
+  handledInquiries     ContactInquiry[]
+  createdProjects      Project[]
+  createdTeamStores    TeamStore[]
+  assignedTeamStoreInquiries TeamStoreInquiry[]
+
+  @@map("admin_users")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+// Categories
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  icon        String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  products Product[]
+
+  @@map("categories")
+}
+
+// Products
+model Product {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String
+  price         Decimal  @db.Decimal(10, 2)
+  originalPrice Decimal? @db.Decimal(10, 2)
+  sku           String?  @unique
+  categoryId    String
+  isActive      Boolean  @default(true)
+  isFeatured    Boolean  @default(false)
+  inStock       Boolean  @default(true)
+  stockQuantity Int      @default(0)
+  minOrderQty   Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String
+
+  // Relations
+  category        Category          @relation(fields: [categoryId], references: [id])
+  createdBy       AdminUser         @relation(fields: [createdById], references: [id])
+  images          ProductImage[]
+  variants        ProductVariant[]
+  features        ProductFeature[]
+  materials       ProductMaterial[]
+  orderItems      OrderItem[]
+  projects        Project[]
+  teamStores      TeamStoreProduct[]
+
+  @@map("products")
+}
+
+// Product Images
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  isPrimary Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+// Product Variants (sizes, colors)
+model ProductVariant {
+  id          String  @id @default(cuid())
+  productId   String
+  name        String  // e.g., "Small", "Black", "Cotton"
+  value       String  // e.g., "S", "#000000", "100% Cotton"
+  type        VariantType
+  price       Decimal? @db.Decimal(10, 2) // Price modifier
+  isAvailable Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_variants")
+}
+
+enum VariantType {
+  SIZE
+  COLOR
+  MATERIAL
+  STYLE
+}
+
+// Product Features
+model ProductFeature {
+  id        String @id @default(cuid())
+  productId String
+  feature   String
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_features")
+}
+
+// Product Materials
+model ProductMaterial {
+  id        String @id @default(cuid())
+  productId String
+  material  String
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_materials")
+}
+
+// Customers
+model Customer {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  firstName String
+  lastName  String
+  phone     String?
+  company   String?
+  address   Json?    // Store address as JSON for flexibility
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders         Order[]
+  projects       Project[]
+  inquiries      ContactInquiry[]
+
+  @@map("customers")
+}
+
+// Orders
+model Order {
+  id               String      @id @default(cuid())
+  orderNumber      String      @unique
+  customerId       String
+  status           OrderStatus @default(PENDING)
+  subtotal         Decimal     @db.Decimal(10, 2)
+  tax              Decimal     @db.Decimal(10, 2) @default(0)
+  shipping         Decimal     @db.Decimal(10, 2) @default(0)
+  total            Decimal     @db.Decimal(10, 2)
+  paymentStatus    PaymentStatus @default(PENDING)
+  shippingAddress  Json?
+  billingAddress   Json?
+  notes            String?
+  internalNotes    String?
+  estimatedDelivery DateTime?
+  deliveredAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  updatedById      String?
+
+  // Relations
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  updatedBy     AdminUser?       @relation(fields: [updatedById], references: [id])
+  items         OrderItem[]
+  projects      Project[]
+  statusHistory OrderStatusHistory[]
+
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  IN_DESIGN
+  DESIGN_APPROVED
+  IN_PRODUCTION
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_PAID
+  FAILED
+  REFUNDED
+}
+
+// Order Items
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(10, 2)
+  totalPrice  Decimal @db.Decimal(10, 2)
+  customizations Json? // Store custom options as JSON
+  notes       String?
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// Order Status History
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  notes     String?
+  createdAt DateTime    @default(now())
+
+  // Relations
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_status_history")
+}
+
+// Custom Projects
+model Project {
+  id            String           @id @default(cuid())
+  customerId    String
+  orderId       String?
+  productId     String?
+  title         String
+  description   String
+  projectType   String
+  timeline      String?
+  budget        String?
+  status        DesignStatus     @default(PENDING)
+  priority      DesignPriority   @default(NORMAL)
+  requirements  Json?            // Store design requirements as JSON
+  notes         String?
+  internalNotes String?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  createdById   String
+
+  // Relations
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  order       Order?           @relation(fields: [orderId], references: [id])
+  product     Product?         @relation(fields: [productId], references: [id])
+  createdBy   AdminUser        @relation(fields: [createdById], references: [id])
+  files       DesignFile[]
+  revisions   DesignRevision[]
+
+  @@map("projects")
+}
+
+enum DesignStatus {
+  PENDING
+  IN_PROGRESS
+  REVIEW
+  APPROVED
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum DesignPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// Design Files
+model DesignFile {
+  id             String       @id @default(cuid())
+  projectId      String
+  fileName       String
+  originalName   String
+  fileSize       Int
+  mimeType       String
+  url            String
+  fileType       FileType
+  isActive       Boolean      @default(true)
+  uploadedAt     DateTime     @default(now())
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("design_files")
+}
+
+enum FileType {
+  REFERENCE
+  DESIGN
+  PROOF
+  FINAL
+  OTHER
+}
+
+// Design Revisions
+model DesignRevision {
+  id             String   @id @default(cuid())
+  projectId      String
+  revisionNumber Int
+  description    String
+  changes        String?
+  createdAt      DateTime @default(now())
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("design_revisions")
+}
+
+// Contact Inquiries
+model ContactInquiry {
+  id          String        @id @default(cuid())
+  customerId  String?
+  name        String
+  email       String
+  phone       String?
+  projectType String?
+  message     String
+  timeline    String?
+  budget      String?
+  status      InquiryStatus @default(NEW)
+  priority    InquiryPriority @default(NORMAL)
+  assignedTo  String?
+  notes       String?
+  followUpDate DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  assignedAdmin AdminUser? @relation(fields: [assignedTo], references: [id])
+
+  @@map("contact_inquiries")
+}
+
+enum InquiryStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  CONVERTED
+  CLOSED
+}
+
+enum InquiryPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// Settings
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      SettingType @default(STRING)
+  group     String?
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+enum SettingType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+// Team Stores
+model TeamStore {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String?
+  logo        String?       // URL to logo image
+  banner      String?       // URL to banner image
+  website     String?
+  email       String
+  phone       String?
+  address     String?
+  status      TeamStoreStatus @default(PENDING)
+  isActive    Boolean       @default(false)
+  launchedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  createdById String
+
+  // Relations
+  createdBy   AdminUser     @relation(fields: [createdById], references: [id])
+  products   TeamStoreProduct[]
+  inquiries  TeamStoreInquiry[]
+
+  @@map("team_stores")
+}
+
+enum TeamStoreStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  SUSPENDED
+}
+
+// Team Store Products (junction table)
+model TeamStoreProduct {
+  id          String    @id @default(cuid())
+  teamStoreId String
+  productId   String
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  teamStore   TeamStore @relation(fields: [teamStoreId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([teamStoreId, productId])
+  @@map("team_store_products")
+}
+
+// Team Store Inquiries
+model TeamStoreInquiry {
+  id          String        @id @default(cuid())
+  teamStoreId String?
+  name        String
+  email       String
+  phone       String?
+  organization String
+  website     String?
+  description String
+  logo        String?       // URL to uploaded logo
+  design      String?       // URL to uploaded design
+  status      TeamStoreInquiryStatus @default(NEW)
+  priority    InquiryPriority @default(NORMAL)
+  assignedTo  String?
+  notes       String?
+  followUpDate DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  teamStore   TeamStore?    @relation(fields: [teamStoreId], references: [id])
+  assignedAdmin AdminUser?  @relation(fields: [assignedTo], references: [id])
+
+  @@map("team_store_inquiries")
+}
+
+enum TeamStoreInquiryStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  APPROVED
+  REJECTED
+  CONVERTED
+  CLOSED
+}

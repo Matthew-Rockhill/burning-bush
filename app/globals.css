@@ -1,26 +1,119 @@
+/* Import fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+
+/* tailwind.css */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+
+@theme {
+  /* Colors */
+  --color-bb-black: #0a0a0a;
+  --color-bb-dark: #1a1a1a;
+  --color-bb-darker: #2a2a2a;
+  --color-bb-darkest: #000000;
+  
+  /* Grays */
+  --color-bb-gray-100: #f5f5f5;
+  --color-bb-gray-200: #e5e5e5;
+  --color-bb-gray-300: #d4d4d4;
+  --color-bb-gray-400: #a3a3a3;
+  --color-bb-gray-500: #737373;
+  --color-bb-gray-600: #525252;
+  --color-bb-gray-700: #404040;
+  --color-bb-gray-800: #262626;
+  --color-bb-gray-900: #171717;
+  
+  /* Flame colors from logo */
+  --color-bb-flame-purple: #8b5cf6;
+  --color-bb-flame-magenta: #ec4899;
+  --color-bb-flame-pink: #f97316;
+  --color-bb-flame-orange: #f59e0b;
+  --color-bb-flame-yellow: #eab308;
+  --color-bb-flame-lime: #84cc16;
+  --color-bb-flame-green: #22c55e;
+  --color-bb-flame-teal: #06b6d4;
+  --color-bb-flame-cyan: #0ea5e9;
+  --color-bb-flame-blue: #3b82f6;
+  
+  /* Typography */
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+  --font-family-heading: 'Poppins', system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', monospace;
+  
+  /* Spacing */
+  --spacing-18: 4.5rem;
+  --spacing-88: 22rem;
+  --spacing-128: 32rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Custom gradient utilities */
+@utility bg-bb-flame-gradient {
+  background: linear-gradient(135deg, var(--color-bb-flame-purple) 0%, var(--color-bb-flame-magenta) 25%, var(--color-bb-flame-pink) 50%, var(--color-bb-flame-orange) 75%, var(--color-bb-flame-yellow) 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@utility bg-bb-flame-radial {
+  background: radial-gradient(circle at center, var(--color-bb-flame-purple) 0%, var(--color-bb-flame-magenta) 20%, var(--color-bb-flame-pink) 40%, var(--color-bb-flame-orange) 60%, var(--color-bb-flame-yellow) 80%, var(--color-bb-flame-green) 100%);
+}
+
+@utility bg-bb-flame-vertical {
+  background: linear-gradient(to bottom, var(--color-bb-flame-purple) 0%, var(--color-bb-flame-magenta) 20%, var(--color-bb-flame-pink) 40%, var(--color-bb-flame-orange) 60%, var(--color-bb-flame-yellow) 80%, var(--color-bb-flame-green) 100%);
+}
+
+@utility bg-bb-flame-horizontal {
+  background: linear-gradient(to right, var(--color-bb-flame-purple) 0%, var(--color-bb-flame-magenta) 20%, var(--color-bb-flame-pink) 40%, var(--color-bb-flame-orange) 60%, var(--color-bb-flame-yellow) 80%, var(--color-bb-flame-green) 100%);
+}
+
+@utility bg-bb-subtle-gradient {
+  background: linear-gradient(135deg, var(--color-bb-dark) 0%, var(--color-bb-darker) 100%);
+}
+
+/* Gradient text utility */
+@utility text-bb-gradient {
+  background: linear-gradient(135deg, var(--color-bb-flame-purple) 0%, var(--color-bb-flame-magenta) 25%, var(--color-bb-flame-pink) 50%, var(--color-bb-flame-orange) 75%, var(--color-bb-flame-yellow) 100%);
+  background-clip: text;
+  color: transparent;
+}
+
+/* Animation utilities */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+/* Sliding animations for hero slider */
+@keyframes slide-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes slide-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@utility animate-slide-left {
+  animation: slide-left 30s linear infinite;
+}
+
+@utility animate-slide-right {
+  animation: slide-right 30s linear infinite;
 }
